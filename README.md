@@ -6,7 +6,7 @@ A Windows dashboard for **Pre-Commitment Impact & Risk Prediction for Self-Evolv
 - Windows 10/11
 - Python 3.12 recommended for this project environment
 - LangSmith account and API key
-- OpenAI API key with available usage for a real EvoAgentX run
+- Gemini API key with available free-tier quota for a real EvoAgentX run
 - Internet connection
 
 ## Run
@@ -18,7 +18,7 @@ A Windows dashboard for **Pre-Commitment Impact & Risk Prediction for Self-Evolv
 6. Open `http://localhost:8501` if the browser does not open automatically. Keep the terminal running.
 
 ## UI flow
-1. In the sidebar, enter your LangSmith API key, project name (default `evoagentx-phase1`), OpenAI API key, and model (default `gpt-4o-mini`). Do not paste API keys into chat or commit them to Git.
+1. In the sidebar, enter your LangSmith API key, project name (default `evoagentx-phase1`), Gemini API key, and model (default `gemini/gemini-3.8-flash`). Do not paste API keys into chat or commit them to Git.
 2. Open **Run EvoAgentX**, enter a goal, and run it. The app calls `WorkFlowGenerator.generate_workflow(goal=...)`; it does not create a manually authored task list. EvoAgentX generates the graph and assigns agents.
 3. Before execution, the app captures the generated graph's actual nodes, edges, inputs, outputs, and assigned agents.
 4. The app loads the generated agents into `AgentManager` and executes the returned graph using `WorkFlow`.
@@ -29,11 +29,11 @@ A Windows dashboard for **Pre-Commitment Impact & Risk Prediction for Self-Evolv
 ## Captured data
 - **Generated graph dataset (`data/generated_workflows.jsonl`):** goal, actual generated nodes and edges, node inputs/outputs, assigned agent names, declared workflow inputs/outputs, and execution metadata.
 - **Raw LangSmith dataset (`data/langsmith_raw_runs.csv`):** run hierarchy, run type, timing, errors, token usage/cost when supplied, and input/output sizes.
-- **Feature dataset (`data/phase1_features.csv`):** run count, LLM/tool call counts, errors, failure rate, retry-tag count, trace depth, duration, token counts, cost when supplied, and input/output character counts.
+- **Feature dataset (`data/phase1_features.csv`):** run count, LLM/tool call counts, errors, failure rate, retry-tag count, trace depth, duration, token counts, cost when supplied, and input/output character counts.\n- **Structured activity log (`data/activity_events.jsonl`):** timestamped workflow/tool/memory events recorded by explicit instrumentation.\n- **Activity features (`data/activity_features.csv`):** counts, failures and durations aggregated from the structured activity log.
 
 ## Important limitations
 - Graph structure is captured from the `WorkFlowGraph` returned by EvoAgentX. LangSmith traces are collected separately; LangSmith does not replace graph capture.
-- The app creates traceable spans for workflow generation and workflow execution. Individual internal agent/model/tool spans appear only if those calls are separately instrumented by EvoAgentX or their integrations. The app does not fabricate child spans.
+- The app creates traceable spans and local activity records for workflow generation and workflow execution. Individual internal agent/model/tool spans appear only if those calls are separately instrumented by EvoAgentX or their integrations. The app does not fabricate child spans.\n- `src/activity_monitor.py` provides `execute_tracked_tool(...)` and `execute_tracked_memory(...)` wrappers. Use these around real tool and memory backend calls to record their actual operation, duration, result summary and errors. The current runner does not automatically register external tools or configure a memory backend, so tool/memory panels remain empty until real integrations call these wrappers.
 - EvoAgentX resets graph node states after execution. This implementation saves the generated graph structure before execution; it does not claim to preserve per-node runtime states from the reset graph.
 - Token and cost fields are populated only when the trace contains usage metadata.
 - Ordinary traces do not automatically provide benchmark quality scores or explicit evolution diffs. Those require evaluator/evolution-event instrumentation.
