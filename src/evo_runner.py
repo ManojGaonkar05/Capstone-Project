@@ -147,7 +147,7 @@ def run_evoagentx(
 
     # EvoAgentX generates the workflow automatically from the supplied goal.
     generator = WorkFlowGenerator(llm=llm)
-    with track_activity("workflow", "generate", name="EvoAgentX WorkFlowGenerator", input_summary=goal.strip(), metadata={"model": model_name.strip(), "run_label": run_label}) as event:
+    with track_activity("workflow", "generate", name="EvoAgentX WorkFlowGenerator", input_summary=goal.strip(), run_id=run_label, metadata={"model": model_name.strip(), "run_label": run_label}) as event:
         graph = _generate_workflow(generator, goal.strip())
         event["output"] = {"node_count": len(getattr(graph, "nodes", []) or []), "edge_count": len(getattr(graph, "edges", []) or [])}
 
@@ -163,7 +163,7 @@ def run_evoagentx(
         agent_manager=manager,
         llm=llm,
     )
-    with track_activity("workflow", "execute", name="EvoAgentX generated workflow", input_summary=inputs, metadata={"run_label": run_label, "workflow_version": workflow_version}) as event:
+    with track_activity("workflow", "execute", name="EvoAgentX generated workflow", input_summary=inputs, run_id=run_label, metadata={"run_label": run_label, "workflow_version": workflow_version}) as event:
         result = _execute_workflow(workflow, inputs)
         event["output"] = str(getattr(result, "status", "unknown"))
 
