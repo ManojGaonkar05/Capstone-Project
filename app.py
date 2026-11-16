@@ -10,7 +10,7 @@ from langsmith import Client
 
 from src.evo_runner import run_evoagentx
 from src.activity_monitor import load_activity_events
-from src.pipeline import extract_features, runs_to_frame
+from src.pipeline import activity_events_to_frame, extract_activity_features, extract_features, runs_to_frame
 from src.store import append_jsonl, load_csv, save_csv
 
 
@@ -20,6 +20,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 RAW_PATH = DATA_DIR / "langsmith_raw_runs.csv"
 FEATURE_PATH = DATA_DIR / "phase1_features.csv"
+ACTIVITY_FEATURE_PATH = DATA_DIR / "activity_features.csv"
 ACTIVITY_PATH = DATA_DIR / "activity_events.jsonl"
 GRAPH_PATH = DATA_DIR / "generated_workflows.jsonl"
 
@@ -68,6 +69,7 @@ with st.sidebar:
         [
             "Overview",
             "Run EvoAgentX",
+            "Workflow Monitor",
             "LangSmith Monitor",
             "Tools Monitor",
             "Memory Monitor",
@@ -293,6 +295,39 @@ elif page == "Run EvoAgentX":
                 st.exception(exc)
 
 
+# -------------------- Workflow Monitor --------------------
+
+elif page == "Workflow Monitor":
+    st.subheader("Workflow lifecycle monitoring")
+    events = load_activity_events(ACTIVITY_PATH)
+    workflow_events = [event for event in events if event.get("activity_type") == "workflow"]
+    frame = activity_events_to_frame(workflow_events)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Workflow events", len(frame))
+    c2.metric("Generation events", int((frame["operation"] == "generate").sum()) if not frame.empty else 0)
+    c3.metric("Execution failures", int((frame["status"] == "error").sum()) if not frame.empty else 0)
+
+    if frame.empty:
+        st.info("No workflow lifecycle events recorded yet. Run an automatically generated EvoAgentX workflow first.")
+    else:
+        st.dataframe(frame.sort_values("timestamp", ascending=False), use_container_width=True, height=380)
+        show_download(frame, "workflow_activity_events.csv", "Download workflow activity events")
+
+    st.markdown("### Captured generated workflow graphs")
+    graphs = read_graph_records()
+    if graphs:
+        graph_rows = [{
+            "Run label": row.get("run_label"),
+            "Workflow version": row.get("workflow_version"),
+            "Status": row.get("workflow_status"),
+            "Nodes": row.get("generated_graph", {}).get("node_count", 0),
+            "Edges": row.get("generated_graph", {}).get("edge_count", 0),
+        } for row in graphs]
+        st.dataframe(pd.DataFrame(graph_rows), use_container_width=True)
+    else:
+        st.info("No generated graph records saved yet.")
+
 # -------------------- LangSmith Monitor --------------------
 
 elif page == "LangSmith Monitor":
@@ -414,7 +449,12 @@ elif page == "Feature Extraction":
             try:
                 features = extract_features(raw)
                 save_csv(features, FEATURE_PATH)
-                st.success(f"Extracted and saved {len(features)} feature records.")
+                activity_features = extract_activity_features(load_activity_events(ACTIVITY_PATH))
+                save_csv(activity_features, ACTIVITY_FEATURE_PATH)
+                st.success(
+                    f"Saved {len(features)} LangSmith feature records and "
+                    f"{len(activity_features)} structured activity feature records."
+                )
             except Exception as exc:
                 st.error(f"Feature extraction failed: {exc}")
                 st.exception(exc)
