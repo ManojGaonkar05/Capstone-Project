@@ -125,3 +125,28 @@ def log_tool_activity(operation: str, **kwargs) -> dict:
 def log_memory_activity(operation: str, **kwargs) -> dict:
     """Call immediately after/beside a real memory read/write/retrieval."""
     return log_activity("memory", operation, **kwargs)
+
+
+
+def execute_tracked_tool(tool_callable, *, name: str, inputs: Any = None, run_id: str = "", metadata: dict | None = None):
+    """Execute a real tool callable and record its actual result or exception."""
+    with track_activity(
+        "tool", "invoke", name=name, input_summary=inputs,
+        run_id=run_id, metadata=metadata,
+    ) as event:
+        result = tool_callable()
+        event["output"] = result
+    return result
+
+
+def execute_tracked_memory(memory_callable, *, operation: str, name: str, inputs: Any = None, run_id: str = "", metadata: dict | None = None):
+    """Execute a real memory read/write/retrieval callable and record its result."""
+    if operation not in {"read", "write", "retrieve", "delete", "search"}:
+        raise ValueError("Unsupported memory operation")
+    with track_activity(
+        "memory", operation, name=name, input_summary=inputs,
+        run_id=run_id, metadata=metadata,
+    ) as event:
+        result = memory_callable()
+        event["output"] = result
+    return result
