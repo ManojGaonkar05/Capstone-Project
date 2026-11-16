@@ -147,7 +147,10 @@ def run_evoagentx(
 
     # EvoAgentX generates the workflow automatically from the supplied goal.
     generator = WorkFlowGenerator(llm=llm)
-    with track_activity("workflow", "generate", name="EvoAgentX WorkFlowGenerator", input_summary=goal.strip(), metadata={"model": model_name.strip(), "run_label": run_label}) as event:\n        graph = _generate_workflow(generator, goal.strip())\n        event["output"] = {"node_count": len(getattr(graph, "nodes", []) or []), "edge_count": len(getattr(graph, "edges", []) or [])}\n
+    with track_activity("workflow", "generate", name="EvoAgentX WorkFlowGenerator", input_summary=goal.strip(), metadata={"model": model_name.strip(), "run_label": run_label}) as event:
+        graph = _generate_workflow(generator, goal.strip())
+        event["output"] = {"node_count": len(getattr(graph, "nodes", []) or []), "edge_count": len(getattr(graph, "edges", []) or [])}
+
     # Capture the real graph before execution can reset node state.
     graph_data = serialize_generated_graph(graph)
     inputs = _make_inputs(graph, goal.strip(), workflow_inputs)
@@ -160,7 +163,10 @@ def run_evoagentx(
         agent_manager=manager,
         llm=llm,
     )
-    with track_activity("workflow", "execute", name="EvoAgentX generated workflow", input_summary=inputs, metadata={"run_label": run_label, "workflow_version": workflow_version}) as event:\n        result = _execute_workflow(workflow, inputs)\n        event["output"] = str(getattr(result, "status", "unknown"))\n
+    with track_activity("workflow", "execute", name="EvoAgentX generated workflow", input_summary=inputs, metadata={"run_label": run_label, "workflow_version": workflow_version}) as event:
+        result = _execute_workflow(workflow, inputs)
+        event["output"] = str(getattr(result, "status", "unknown"))
+
     status_value = getattr(result, "status", "unknown")
     status = str(getattr(status_value, "value", status_value))
     if status.lower() not in {"success", "succeeded", "completed"}:
