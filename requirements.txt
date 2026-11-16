@@ -1,0 +1,7 @@
+streamlit>=1.36,<2
+pandas>=2.0
+langsmith>=0.3
+evoagentx[rag,tools]
+openai
+python-dotenv>=1.0
+plotly
