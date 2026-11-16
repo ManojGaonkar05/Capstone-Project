@@ -32,3 +32,42 @@ def extract_features(raw):
             depthmax=max(depthmax,depth)
         out.append({'trace_id':str(trace),'root_run_name':str(root.run_name),'root_status':'failed' if root.has_error else 'success','run_count':len(g),'llm_call_count':int(g.is_llm.sum()),'tool_call_count':int(g.is_tool.sum()),'error_count':errors,'failure_rate':round(errors/max(len(g),1),4),'retry_tag_count':int(g.tags.fillna('').str.contains('retry',case=False).sum()),'workflow_depth':depthmax,'total_duration_ms':round(float(rootdur or 0),2),'mean_span_duration_ms':round(float(dur.mean()) if dur.notna().any() else 0,2),'total_tokens':int(pd.to_numeric(g.total_tokens,errors='coerce').fillna(0).sum()),'prompt_tokens':int(pd.to_numeric(g.prompt_tokens,errors='coerce').fillna(0).sum()),'completion_tokens':int(pd.to_numeric(g.completion_tokens,errors='coerce').fillna(0).sum()),'total_cost':round(float(costs.sum()),8) if costs.notna().any() else None,'input_chars':int(g.input_chars.sum()),'output_chars':int(g.output_chars.sum())})
     return pd.DataFrame(out)
+
+
+def activity_events_to_frame(events):
+    """Convert explicitly instrumented local workflow/tool/memory events to a DataFrame."""
+    columns = [
+        "event_id", "timestamp", "activity_type", "operation", "name", "status",
+        "duration_ms", "input_summary", "output_summary", "error", "run_id", "metadata",
+    ]
+    if not events:
+        return pd.DataFrame(columns=columns)
+    frame = pd.DataFrame(events)
+    for column in columns:
+        if column not in frame.columns:
+            frame[column] = None
+    return frame[columns]
+
+
+def extract_activity_features(events):
+    """Aggregate observed activity events; absent events remain zero, not fabricated."""
+    frame = activity_events_to_frame(events)
+    if frame.empty:
+        return pd.DataFrame()
+    rows = []
+    for run_id, group in frame.groupby("run_id", dropna=False):
+        durations = pd.to_numeric(group["duration_ms"], errors="coerce")
+        types = group["activity_type"].fillna("").astype(str).str.lower()
+        statuses = group["status"].fillna("").astype(str).str.lower()
+        rows.append({
+            "run_id": str(run_id or ""),
+            "activity_event_count": int(len(group)),
+            "workflow_event_count": int((types == "workflow").sum()),
+            "tool_event_count": int((types == "tool").sum()),
+            "memory_event_count": int((types == "memory").sum()),
+            "activity_error_count": int((statuses == "error").sum()),
+            "activity_failure_rate": round(float((statuses == "error").mean()), 4),
+            "activity_duration_total_ms": round(float(durations.sum()) if durations.notna().any() else 0, 2),
+            "activity_duration_mean_ms": round(float(durations.mean()) if durations.notna().any() else 0, 2),
+        })
+    return pd.DataFrame(rows)
