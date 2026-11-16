@@ -460,20 +460,30 @@ elif page == "Feature Extraction":
                 st.exception(exc)
 
     features = load_csv(FEATURE_PATH)
-    if not features.empty:
-        st.metric("Feature records", len(features))
-        st.dataframe(features, use_container_width=True, height=420)
-        show_download(features, "phase1_features.csv", "Download feature dataset")
-    else:
-        st.info("No features extracted yet.")
+    activity_features = load_csv(ACTIVITY_FEATURE_PATH)
+    tab_trace_features, tab_activity_features = st.tabs(["LangSmith trace features", "Structured activity features"])
+    with tab_trace_features:
+        if not features.empty:
+            st.metric("Trace feature records", len(features))
+            st.dataframe(features, use_container_width=True, height=360)
+            show_download(features, "phase1_features.csv", "Download trace feature dataset")
+        else:
+            st.info("No trace features extracted yet.")
+    with tab_activity_features:
+        if not activity_features.empty:
+            st.metric("Activity feature records", len(activity_features))
+            st.dataframe(activity_features, use_container_width=True, height=360)
+            show_download(activity_features, "activity_features.csv", "Download activity feature dataset")
+        else:
+            st.info("No structured activity features yet. Run the workflow and instrument real tool/memory calls first.")
 
 
 # -------------------- Dataset --------------------
 
 elif page == "Dataset":
     st.subheader("Phase 1 datasets")
-    tab_features, tab_raw, tab_graphs = st.tabs(
-        ["Extracted features", "Raw LangSmith traces", "Generated workflow graphs"]
+    tab_features, tab_raw, tab_graphs, tab_activity = st.tabs(
+        ["Extracted features", "Raw LangSmith traces", "Generated workflow graphs", "Activity events"]
     )
 
     with tab_features:
@@ -515,6 +525,20 @@ elif page == "Dataset":
                 file_name="generated_workflows.jsonl",
                 mime="application/jsonl",
             )
+
+    with tab_activity:
+        events = load_activity_events(ACTIVITY_PATH)
+        if events:
+            activity_frame = activity_events_to_frame(events)
+            st.dataframe(activity_frame, use_container_width=True, height=400)
+            show_download(activity_frame, "activity_events.csv", "Export structured activity events")
+            activity_features = load_csv(ACTIVITY_FEATURE_PATH)
+            if not activity_features.empty:
+                st.markdown("**Aggregated activity features**")
+                st.dataframe(activity_features, use_container_width=True)
+                show_download(activity_features, "activity_features.csv", "Export activity features")
+        else:
+            st.info("No structured activity events have been recorded yet.")
 
     st.markdown("### What the datasets represent")
     st.markdown(
