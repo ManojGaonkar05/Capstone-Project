@@ -9,6 +9,7 @@ import streamlit as st
 from langsmith import Client
 
 from src.evo_runner import run_evoagentx
+from src.activity_monitor import load_activity_events
 from src.pipeline import extract_features, runs_to_frame
 from src.store import append_jsonl, load_csv, save_csv
 
@@ -19,6 +20,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 RAW_PATH = DATA_DIR / "langsmith_raw_runs.csv"
 FEATURE_PATH = DATA_DIR / "phase1_features.csv"
+ACTIVITY_PATH = DATA_DIR / "activity_events.jsonl"
 GRAPH_PATH = DATA_DIR / "generated_workflows.jsonl"
 
 st.set_page_config(
@@ -136,6 +138,13 @@ def show_download(frame: pd.DataFrame, filename: str, label: str):
         file_name=filename,
         mime="text/csv",
     )
+
+
+def read_activity_frame(activity_type=None):
+    events = load_activity_events(ACTIVITY_PATH)
+    if activity_type:
+        events = [event for event in events if event.get("activity_type") == activity_type]
+    return pd.DataFrame(events)
 
 
 def read_graph_records():
@@ -341,39 +350,26 @@ elif page == "LangSmith Monitor":
 elif page == "Tools Monitor":
     st.subheader("Tool activity monitoring")
     raw = load_csv(RAW_PATH)
+    run_type_col = get_column(raw, ["run_type"])
+    traced_tools = (
+        raw[raw[run_type_col].astype(str).str.lower().eq("tool")].copy()
+        if run_type_col else pd.DataFrame()
+    )
+    logged_tools = read_activity_frame("tool")
 
-    if raw.empty:
-        st.warning("No LangSmith traces are stored yet. Run EvoAgentX and refresh traces first.")
-    else:
-        run_type_col = get_column(raw, ["run_type"])
-        if run_type_col:
-            tool_rows = raw[
-                raw[run_type_col].astype(str).str.lower().str.contains("tool", na=False)
-            ].copy()
-        else:
-            tool_rows = raw.iloc[0:0].copy()
-
-        st.caption(
-            "This page reports tool spans explicitly present in LangSmith. "
-            "It does not infer tool calls from ordinary chain or LLM spans."
-        )
-        st.metric("Tool spans detected", len(tool_rows))
-
-        if tool_rows.empty:
-            st.info(
-                "No tool spans were found in the collected traces. "
-                "The current runner does not register tools explicitly, so this is expected "
-                "unless your generated agents invoke instrumented tools."
-            )
-        else:
-            error_col = get_column(tool_rows, ["has_error", "error"])
-            if error_col:
-                failures = tool_rows[error_col].fillna(False).astype(str).str.lower().isin(
-                    ["true", "1"]
-                ).sum()
-                st.metric("Tool spans marked as errors", int(failures))
-            st.dataframe(tool_rows, use_container_width=True, height=420)
-            show_download(tool_rows, "tool_monitoring.csv", "Download tool activity CSV")
+    c1, c2 = st.columns(2)
+    c1.metric("LangSmith tool spans", len(traced_tools))
+    c2.metric("Instrumented tool events", len(logged_tools))
+    st.caption("Instrumented events are written only when a real tool adapter calls log_tool_activity() or track_activity('tool', ...).")
+    if not traced_tools.empty:
+        st.markdown("**LangSmith tool spans**")
+        st.dataframe(traced_tools, use_container_width=True, height=260)
+    if not logged_tools.empty:
+        st.markdown("**Structured tool activity log**")
+        st.dataframe(logged_tools, use_container_width=True, height=260)
+        show_download(logged_tools, "tool_activity_events.csv", "Download tool activity events")
+    if traced_tools.empty and logged_tools.empty:
+        st.info("No real tool calls have been recorded yet. Register/invoke a tool in an EvoAgentX agent and wrap its actual operation with the activity logger. No sample or fabricated tool calls are shown.")
 
 
 # -------------------- Memory Monitor --------------------
@@ -381,34 +377,24 @@ elif page == "Tools Monitor":
 elif page == "Memory Monitor":
     st.subheader("Memory activity monitoring")
     raw = load_csv(RAW_PATH)
+    memory_rows = classify_activity(
+        raw, ["memory", "retrieve", "retrieval", "vector.?store", "embedding.?store"]
+    ) if not raw.empty else pd.DataFrame()
+    logged_memory = read_activity_frame("memory")
 
-    if raw.empty:
-        st.warning("No LangSmith traces are stored yet. Run EvoAgentX and refresh traces first.")
-    else:
-        memory_rows = classify_activity(
-            raw,
-            ["memory", "retrieve", "retrieval", "vector.?store", "embedding.?store"],
-        )
-        st.caption(
-            "This page searches actual trace metadata for memory-related operations. "
-            "A matching name or tag is evidence of a trace record, not a full memory audit."
-        )
-        st.metric("Memory-related trace records detected", len(memory_rows))
-
-        if memory_rows.empty:
-            st.info(
-                "No memory-related trace records were detected. "
-                "The supplied runner does not configure a memory backend or explicitly "
-                "trace memory read/write operations. Therefore, memory usage cannot "
-                "currently be measured from this project."
-            )
-        else:
-            st.dataframe(memory_rows, use_container_width=True, height=420)
-            show_download(
-                memory_rows,
-                "memory_monitoring.csv",
-                "Download memory activity CSV",
-            )
+    c1, c2 = st.columns(2)
+    c1.metric("LangSmith memory-related spans", len(memory_rows))
+    c2.metric("Instrumented memory events", len(logged_memory))
+    st.caption("Instrumented events are written only when a real memory backend calls log_memory_activity() or track_activity('memory', ...).")
+    if not memory_rows.empty:
+        st.markdown("**LangSmith memory-related traces**")
+        st.dataframe(memory_rows, use_container_width=True, height=260)
+    if not logged_memory.empty:
+        st.markdown("**Structured memory activity log**")
+        st.dataframe(logged_memory, use_container_width=True, height=260)
+        show_download(logged_memory, "memory_activity_events.csv", "Download memory activity events")
+    if memory_rows.empty and logged_memory.empty:
+        st.info("No memory reads, writes or retrievals have been recorded. The runner still needs a real memory backend configured; the logger alone does not create or simulate memory operations.")
 
 
 # -------------------- Feature Extraction --------------------
